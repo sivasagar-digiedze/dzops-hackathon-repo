@@ -87,13 +87,11 @@ services:
 
 <<<<<<< HEAD
   ui:
-    build: ./ui
-    container_name: aura_ui
-    restart: unless-stopped
-    depends_on:
-      - api
-    env_file:
-      - .env
+    container_name: aura-ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    restart: no
     ports:
       - "3000:3000"
 =======
