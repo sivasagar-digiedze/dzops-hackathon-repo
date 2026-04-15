@@ -85,6 +85,7 @@ services:
     command: >
       sh -c "sleep 10 && uvicorn main:app --host 0.0.0.0 --port 8000"
 
+<<<<<<< HEAD
   ui:
     build: ./ui
     container_name: aura_ui
@@ -95,6 +96,20 @@ services:
       - .env
     ports:
       - "3000:3000"
+=======
+      #ui:
+      #build: ./ui
+      #container_name: aura_ui
+      #restart: unless-stopped
+      #depends_on:
+      #- api
+      #env_file:
+      #- .env
+      #ports:
+      #- "8502:8501"
+      #command: >
+      #streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+>>>>>>> 89acff2 (vm changes)
 
 volumes:
   postgres_data:
