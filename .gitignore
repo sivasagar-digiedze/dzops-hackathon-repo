@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+aura_agent_app/myenv
 aura_agent/
 .Python
 build/
