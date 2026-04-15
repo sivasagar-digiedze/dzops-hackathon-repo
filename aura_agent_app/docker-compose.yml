@@ -92,7 +92,7 @@ services:
       dockerfile: Dockerfile
     restart: no
     ports:
-      - "3000:3000"
+      - "3000:5173"
 
 volumes:
   postgres_data:
