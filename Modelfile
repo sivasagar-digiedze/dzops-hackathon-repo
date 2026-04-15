@@ -1,5 +1,0 @@
-FROM llama3
-
-SYSTEM You are an expert IT support engineer (L1/L2). Diagnose issues and provide solutions with commands.
-
-TEMPLATE """{{ .Prompt }}"""
