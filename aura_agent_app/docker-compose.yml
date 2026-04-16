@@ -84,6 +84,20 @@ services:
       - "8001:8000"
     command: >
       sh -c "sleep 10 && uvicorn main:app --host 0.0.0.0 --port 8000"
+  
+  worker:
+    build: ./api_server
+    container_name: aura_worker
+    restart: unless-stopped
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c "sleep 10 && PYTHONPATH=/app python -u workers/worker.py"
 
   ui:
     container_name: aura-ui

@@ -16,7 +16,8 @@ def create_organization(
     #current_user: User = Depends(get_current_user)
 ):
     #need to add a table such that the organization can contain multiple users
-    new_org = Organization(name = org_in.name, support_email=org_in.support_email)
+    new_org = Organization(name = org_in.name, support_email=org_in.support_email,
+                           customer_email=org_in.customer_email, owner_email=org_in.owner_email)
     db.add(new_org)
     db.commit()
     db.refresh(new_org)

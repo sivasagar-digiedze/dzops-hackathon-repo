@@ -4,6 +4,8 @@ from typing import List, Optional
 class OrganizationBase(BaseModel):
     name: str
     support_email: EmailStr
+    customer_email: EmailStr
+    owner_email: EmailStr
 
 class OrganizationCreate(OrganizationBase):
     pass

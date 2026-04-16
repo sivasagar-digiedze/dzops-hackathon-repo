@@ -23,7 +23,7 @@ class TicketOut(TicketBase):
 
 class InboundEmailWebhook(BaseModel):
     # This is a sample webhook payload that we might expect from an email service like SendGrid, Mailgun, or a custom Gmail pubsub processor
-    to: EmailStr # The support email of the organization
+    to_email: EmailStr
     from_email: EmailStr # sender (customer)
     subject: str
     text_body: str
