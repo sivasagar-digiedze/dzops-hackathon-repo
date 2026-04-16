@@ -6,6 +6,6 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
-    allowedHosts: ["aura.hastag.store"]
+    allowedHosts: ["aura.hastag.store", "http://localhost/"]
   }
 });

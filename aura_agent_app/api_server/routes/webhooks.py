@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from langchain_core.messages import HumanMessage
@@ -49,17 +50,17 @@ def receive_email_webhook(
     db: Session = Depends(get_db)
 ):
     # 1. Identify organization by support email
-    org = db.query(Organization).filter(Organization.support_email == payload.to).first()
+    org = db.query(Organization).filter(Organization.support_email == payload.to_email).first()
     if not org:
-        raise HTTPException(status_code=404, detail="Organization not found for this support email")
+        raise HTTPException(status_code = 404, detail="Organization not found for this support email")
     
     # 2. Create the ticket
     new_ticket = Ticket(
-        org_id=org.id,
-        sender_email=payload.from_email,
-        subject=payload.subject,
-        body=payload.text_body,
-        thread_id=payload.message_id
+        organization_id = org.id,
+        sender_email = payload.from_email,
+        subject = payload.subject,
+        body = payload.text_body,
+        thread_id = payload.message_id
     )
     db.add(new_ticket)
     db.commit()

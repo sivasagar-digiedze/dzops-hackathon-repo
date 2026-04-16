@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from typing import List
 from schemas.organization import OrganizationCreate, OrganizationOut
@@ -27,21 +27,16 @@ def list_organizations(
     db: Session = Depends(get_db),
     #current_user: User = Depends(get_current_user)
 ):
-    organizations = db.query(Organization).filter(
-        Organization.deleted_at.is_(None)
-    ).all()
+    organizations = db.query(Organization).all()
     return organizations
 
 @router.get("/{id}", response_model=OrganizationOut)
-def get_organization_by_id(
+def get_organization_by_id(id: int = Path(..., description="Organization ID"),
     db: Session = Depends(get_db),
     #current_user: User = Depends(get_current_user)
 ):
     organization = db.query(Organization).filter(
-        Organization.id == id,
-        Organization.deleted_at.is_(None)
-    ).first()
-
+        Organization.id == id).first()
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
     return organization
