@@ -10,6 +10,7 @@ class CloudAccount(BaseMixin, Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     credentials = Column(JSON, nullable=False)
+    cloud_type = Column(String, nullable = False)
     # Relationships
     organization = relationship("Organization", back_populates="cloud_accounts")
     owner = relationship("User", back_populates="cloud_accounts")

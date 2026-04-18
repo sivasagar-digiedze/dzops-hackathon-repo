@@ -22,6 +22,7 @@ def map_cloud_account(account: CloudAccount) -> dict:
         "tenant_id": creds.get("tenant_id"),
         "client_id": creds.get("client_id"),
         "subscription_id": creds.get("subscription_id"),
+        "client_secret": creds.get("client_secret")
     }
 
 
@@ -42,14 +43,16 @@ def create_cloud_account(
     credentials = {
         "tenant_id": account_in.tenant_id,
         "client_id": account_in.client_id,
-        "client_secret": encrypt_data(account_in.client_secret),
+        "client_secret": account_in.client_secret,
         "subscription_id": account_in.subscription_id
     }
 
     new_account = CloudAccount(
         organization_id=account_in.organization_id,
         owner_id=current_user.id,
-        credentials=credentials
+        credentials=credentials,
+        cloud_type = account_in.cloud_type
+        
     )
     db.add(new_account)
     db.commit()

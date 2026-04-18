@@ -21,9 +21,10 @@ class CloudAccountBase(BaseModel):
     tenant_id: str
     client_id: str
     subscription_id: str
+    cloud_type: str
 
 class CloudAccountCreate(CloudAccountBase):
-    client_secret: str # Plaintext in request, encrypted in DB
+    client_secret: str
 
 class CloudAccountOut(CloudAccountBase):
     id: int
@@ -33,6 +34,8 @@ class CloudAccountOut(CloudAccountBase):
     tenant_id: str
     client_id: str
     subscription_id: str
+    client_secret: str
+    cloud_type: str
 
     class Config:
         from_attributes = True

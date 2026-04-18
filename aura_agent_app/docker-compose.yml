@@ -40,7 +40,7 @@ services:
       -m /models/Ministral-3-3B-Reasoning-2512-Q4_K_M.gguf
       --host 0.0.0.0
       --port 8000
-      --ctx-size 1024
+      --ctx-size 2048
       --batch-size 256
       --threads 6
       --parallel 2
