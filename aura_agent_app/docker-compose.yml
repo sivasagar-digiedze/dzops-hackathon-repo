@@ -1,0 +1,120 @@
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: aura_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: aura_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: aura_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: aura_llm
+    restart: unless-stopped
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./aura_agent/llm_model:/models
+    # command: >
+    #   -m /models/Ministral-3-3B-Reasoning-2512-Q4_K_M.gguf
+    #   --host 0.0.0.0
+    #   --port 8000
+    #   --ctx-size 16000
+    #   --batch-size 128
+    #   --threads 4
+    #   --parallel 2
+    #   --n-gpu-layers 0
+    command: >
+      -m /models/phi-3-mini-4k-instruct-q2_k.gguf
+      --grammar-file /models/json.gbnf
+      --host 0.0.0.0
+      --port 8000
+      --ctx-size 2048
+      --batch-size 32
+      --threads 2
+      --parallel 1
+      --n-gpu-layers 0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      retries: 5
+  
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: aura_litellm
+    restart: unless-stopped
+    depends_on:
+      llm:
+        condition: service_started
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./aura_agent/llm_model/litellm_config.yaml:/app/config.yaml
+    command: >
+      --config /app/config.yaml
+      --port 4000
+
+  api:
+    build: ./api_server
+    container_name: aura_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      llm:
+        condition: service_started
+    env_file:
+      - .env
+    ports:
+      - "8001:8000"
+    command: >
+      sh -c "sleep 10 && uvicorn main:app --host 0.0.0.0 --port 8000"
+  
+  worker:
+    build: ./api_server
+    container_name: aura_worker
+    restart: unless-stopped
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c "sleep 10 && PYTHONPATH=/app python -u workers/worker.py"
+
+  ui:
+    container_name: aura-ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    restart: no
+    ports:
+      - "3000:5173"
+
+volumes:
+  postgres_data:
