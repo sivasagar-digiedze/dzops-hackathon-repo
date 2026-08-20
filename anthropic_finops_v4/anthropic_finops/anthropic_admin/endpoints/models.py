@@ -15,7 +15,7 @@ from typing import Any, Optional
 from ..client import AnthropicAdminClient
 from ..pagination import last_id_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.models")
+logger = logging.getLogger("anthropic_admin.endpoints.models")
 
 ENDPOINT = "/v1/models"
 

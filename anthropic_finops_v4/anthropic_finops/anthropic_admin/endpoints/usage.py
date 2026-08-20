@@ -27,7 +27,7 @@ from typing import Any, Optional, Sequence
 from ..client import AnthropicAdminClient
 from ..pagination import next_page_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.usage")
+logger = logging.getLogger("anthropic_admin.endpoints.usage")
 
 ENDPOINT = "/v1/organizations/usage_report/messages"
 
@@ -56,13 +56,14 @@ async def fetch_usage(
     *,
     starting_at: str,
     ending_at: str,
-    bucket_width: str = "1d",
+    bucket_width: str = "1h",
     group_by: Optional[Sequence[str]] = None,
     models: Optional[Sequence[str]] = None,
     service_tiers: Optional[Sequence[str]] = None,
     workspace_ids: Optional[Sequence[str]] = None,
     api_key_ids: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
+    use_speed_beta: bool = False,
 ) -> dict[str, Any]:
     logger.info(
         "anthropic_admin.endpoint.fetch_start",
@@ -94,7 +95,10 @@ async def fetch_usage(
         return p
 
     async def fetch_page(cursor: Optional[str]) -> dict:
-        return await client.get(ENDPOINT, params=_params(cursor))
+        headers = None
+        if use_speed_beta:
+            headers = {"x-anthropic-preview": "fast-mode-2026-02-01"}
+        return await client.get(ENDPOINT, params=_params(cursor), headers=headers)
 
     page_result = await paginate_all(fetch_page, next_page_cursor, endpoint_name="usage")
     logger.info(

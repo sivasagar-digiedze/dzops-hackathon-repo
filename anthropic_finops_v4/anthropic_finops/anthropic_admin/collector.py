@@ -1,35 +1,40 @@
 """
 Collector — orchestrates every Admin API resource fetch for one
 organization, runs each through its parser + normalizer, and assembles
-Dzopti's NormalizedResult.
+the application's NormalizedResult.
 
-Data flow (per the project spec):
+Data flow:
 
     Anthropic Admin API
             |
         HTTP Client            (client.py)
             |
-       Raw JSON response       (endpoints/*.py — fetch_x())
-            |
+       Raw JSON response       (endpoints/*.py — fetch_x(), kept only
+            |                   in memory for this one call, never
+            |                   attached to the returned result)
           Parser                (parsers/*.py — parse_x())
             |
         Normalizer               (parsers/*.py — normalize_x())
             |
-    Dzopti normalized model       (models/normalized.py)
+    Normalized model               (models/normalized.py — the ONLY
+                                     thing NormalizedResult.to_dict()
+                                     exposes; no raw Anthropic response
+                                     ever appears in the final JSON)
 
-Concurrency: organization is fetched first and alone, both because its
-`id` is used to tag every other normalized record AND because it's the
-cheapest possible way to fail fast on a bad Admin key (AuthenticationError)
-before spending time on nine more calls that would fail identically.
-Everything else that doesn't depend on the workspace list runs
-concurrently via asyncio.gather. Once the workspace list is known,
-per-workspace member/rate-limit calls also run concurrently with each
-other (but Anthropic's own rate limits still apply — we don't fan out
-unboundedly; see MAX_CONCURRENT_WORKSPACE_CALLS).
+Concurrency: organization is fetched first and alone — its `id` tags
+every other record, and it's the cheapest way to fail fast on a bad
+Admin key before nine more calls fail identically. Everything else that
+doesn't depend on the workspace list runs concurrently via
+asyncio.gather. Once the workspace list is known, per-workspace
+member/rate-limit calls also run concurrently with each other, bounded
+by MAX_CONCURRENT_WORKSPACE_CALLS.
+
+Granularity: usage defaults to bucket_width="1h" (hourly). Cost stays at
+Anthropic's only supported bucket_width, "1d" — see endpoints/costs.py
+for why hourly cost isn't a documented capability.
 
 Error isolation: one optional endpoint failing never discards data from
-the others. Only AuthenticationError aborts the whole run, since a bad
-key means nothing else will succeed either.
+the others. Only AuthenticationError aborts the whole run.
 """
 from __future__ import annotations
 
@@ -42,6 +47,7 @@ from .client import AnthropicAdminClient
 from .config import AnthropicAdminConfig
 from .exceptions import AnthropicAPIError, AuthenticationError
 from .endpoints import api_keys as ep_api_keys
+from .endpoints import costs as ep_costs
 from .endpoints import models as ep_models
 from .endpoints import organization as ep_organization
 from .endpoints import rate_limits as ep_rate_limits
@@ -51,6 +57,7 @@ from .endpoints import users as ep_users
 from .endpoints import workspaces as ep_workspaces
 from .models.normalized import CollectionError, CollectionMetadata, NormalizedResult
 from .parsers import api_keys as p_api_keys
+from .parsers import costs as p_costs
 from .parsers import models as p_models
 from .parsers import organization as p_organization
 from .parsers import rate_limits as p_rate_limits
@@ -59,14 +66,12 @@ from .parsers import usage as p_usage
 from .parsers import users as p_users
 from .parsers import workspaces as p_workspaces
 
-logger = logging.getLogger("dzopti.anthropic_admin.collector")
+logger = logging.getLogger("anthropic_admin.collector")
 
 MAX_CONCURRENT_WORKSPACE_CALLS = 5
 
 
 class _ComponentOutcome:
-    """Tracks one component's success/failure for capabilities + errors."""
-
     __slots__ = ("component", "ok", "not_supported", "error")
 
     def __init__(self, component: str) -> None:
@@ -77,7 +82,6 @@ class _ComponentOutcome:
 
 
 async def _run_component(name: str, coro) -> tuple[_ComponentOutcome, Any]:
-    """Run one endpoint call, converting an AnthropicAPIError into a tracked outcome."""
     outcome = _ComponentOutcome(name)
     try:
         result = await coro
@@ -85,15 +89,12 @@ async def _run_component(name: str, coro) -> tuple[_ComponentOutcome, Any]:
         return outcome, result
     except AnthropicAPIError as exc:
         logger.error(
-            "dzopti.anthropic_admin.component_failed",
+            "anthropic_admin.component_failed",
             extra={"cl_component": name, "cl_status_code": exc.status_code, "cl_type": exc.error_type},
         )
         outcome.error = CollectionError(
-            component=name,
-            type=exc.error_type or "api_error",
-            message=exc.message,
-            status_code=exc.status_code,
-            request_id=exc.request_id,
+            component=name, type=exc.error_type or "api_error", message=exc.message,
+            status_code=exc.status_code, request_id=exc.request_id,
         )
         return outcome, None
 
@@ -105,18 +106,23 @@ async def collect_all(
     usage_ending_at: str,
     usage_bucket_width: str = "1d",
     usage_group_by: Sequence[str] = ep_usage.DEFAULT_GROUP_BY,
+    cost_starting_at: Optional[str] = None,
+    cost_ending_at: Optional[str] = None,
     fetch_workspace_details: bool = True,
+    fetch_costs: bool = True,
 ) -> NormalizedResult:
     """
     Run the full organization-level collection and return a NormalizedResult.
     Raises AuthenticationError if the Admin key itself is invalid — every
     other endpoint failure is caught and recorded instead of raised.
 
-    Cost collection is intentionally NOT part of this phase (see project
-    README) — no cost_* parameters, no Cost API call, no cost fields in
-    the result.
+    cost_starting_at/cost_ending_at default to the same window as usage
+    if not given separately. Cost is always fetched at 1d granularity
+    (see endpoints/costs.py) regardless of usage_bucket_width.
     """
     started_at = datetime.now(timezone.utc).isoformat()
+    cost_starting_at = cost_starting_at or usage_starting_at
+    cost_ending_at = cost_ending_at or usage_ending_at
 
     outcomes: list[_ComponentOutcome] = []
     requests_made = 0
@@ -130,12 +136,11 @@ async def collect_all(
             pages_fetched += n
 
     async with AnthropicAdminClient(config) as client:
-        # --- Organization first, alone: fail fast on a bad key, and we need its id ---
-        logger.info("dzopti.anthropic_admin.collection_start")
+        logger.info("anthropic_admin.collection_start")
         try:
             org_raw = await ep_organization.fetch_organization(client)
         except AuthenticationError:
-            logger.critical("dzopti.anthropic_admin.authentication_failed")
+            logger.critical("anthropic_admin.authentication_failed")
             raise
         org_outcome = _ComponentOutcome("organization")
         org_outcome.ok = True
@@ -144,36 +149,54 @@ async def collect_all(
         organization = p_organization.normalize_organization(org_raw)
         organization_id = organization.organization_id
 
-        # --- Everything independent of the workspace list, concurrently ---
-        results = await asyncio.gather(
+        # Fetch only resources required for usage + costs. We still fetch
+        # workspaces/users/models optionally for in-memory normalization,
+        # but per requirements we will NOT persist them to MongoDB.
+        gather_tasks = [
             _run_component("workspaces", ep_workspaces.fetch_workspaces(client)),
             _run_component("users", ep_users.fetch_users(client)),
             _run_component("api_keys", ep_api_keys.fetch_api_keys(client)),
             _run_component(
                 "usage",
                 ep_usage.fetch_usage(
-                    client,
-                    starting_at=usage_starting_at,
-                    ending_at=usage_ending_at,
-                    bucket_width=usage_bucket_width,
-                    group_by=usage_group_by,
+                    client, starting_at=usage_starting_at, ending_at=usage_ending_at,
+                    bucket_width=usage_bucket_width, group_by=usage_group_by,
+                    use_speed_beta=True,
                 ),
             ),
             _run_component("rate_limits_organization", ep_rate_limits.fetch_organization_rate_limits(client)),
             _run_component("models", ep_models.fetch_models(client)),
-        )
+        ]
 
-        (ws_outcome, ws_raw) = results[0]
-        (users_outcome, users_raw) = results[1]
-        (keys_outcome, keys_raw) = results[2]
-        (usage_outcome, usage_raw) = results[3]
-        (org_rl_outcome, org_rl_raw) = results[4]
-        (models_outcome, models_raw) = results[5]
+        # Conditionally include costs fetching
+        if fetch_costs:
+            gather_tasks.append(
+                _run_component(
+                    "costs",
+                    ep_costs.fetch_costs(client, starting_at=cost_starting_at, ending_at=cost_ending_at),
+                )
+            )
+
+        results = await asyncio.gather(*gather_tasks)
+
+        # Map results back depending on whether costs were requested
+        idx = 0
+        (ws_outcome, ws_raw) = results[idx]; idx += 1
+        (users_outcome, users_raw) = results[idx]; idx += 1
+        (keys_outcome, keys_raw) = results[idx]; idx += 1
+        (usage_outcome, usage_raw) = results[idx]; idx += 1
+        (org_rl_outcome, org_rl_raw) = results[idx]; idx += 1
+        (models_outcome, models_raw) = results[idx]; idx += 1
         outcomes.extend([ws_outcome, users_outcome, keys_outcome, usage_outcome, org_rl_outcome, models_outcome])
         for raw in (ws_raw, users_raw, keys_raw, usage_raw, org_rl_raw, models_raw):
             _track_pages(raw)
 
-        # Spend limits handles its own "not supported" case internally and never raises for that.
+        costs_raw = None
+        if fetch_costs:
+            (costs_outcome, costs_raw) = results[idx]
+            outcomes.append(costs_outcome)
+            _track_pages(costs_raw)
+
         spend_outcome = _ComponentOutcome("spend_limits")
         try:
             spend_raw = await ep_spend_limits.fetch_spend_limits(client)
@@ -192,7 +215,6 @@ async def collect_all(
 
         workspaces = p_workspaces.normalize_workspaces(ws_raw) if ws_raw else []
 
-        # --- Per-workspace member + rate-limit calls, bounded concurrency ---
         workspace_members: list = []
         rate_limits = p_rate_limits.normalize_rate_limits(org_rl_raw, workspace_id=None) if org_rl_raw else []
 
@@ -222,10 +244,11 @@ async def collect_all(
                 if rl_raw:
                     rate_limits.extend(p_rate_limits.normalize_rate_limits(rl_raw, workspace_id=ws_id))
 
-    # --- Normalize everything collected above ---
+    # --- Normalize everything collected above (raw dicts go out of scope after this) ---
     users = p_users.normalize_users(users_raw) if users_raw else []
     api_keys_normalized = p_api_keys.normalize_api_keys(keys_raw) if keys_raw else []
     usage_records = p_usage.normalize_usage(usage_raw, organization_id=organization_id) if usage_raw else []
+    cost_records = p_costs.normalize_costs(costs_raw, organization_id=organization_id) if costs_raw else []
     spend_limits_result = p_spend_limits.normalize_spend_limits(spend_raw)
     models_normalized = p_models.normalize_models(models_raw) if models_raw else []
 
@@ -238,10 +261,12 @@ async def collect_all(
     metadata = CollectionMetadata(
         started_at=started_at,
         completed_at=completed_at,
-        success=True,  # we only reach here if the run wasn't aborted by AuthenticationError
+        success=True,
         partial=partial,
         date_range={
             "usage": {"starting_at": usage_starting_at, "ending_at": usage_ending_at, "bucket_width": usage_bucket_width},
+            # costs removed per new requirement
+            "costs": {"note": "removed_by_requirement"},
         },
         requests_made=requests_made,
         pages_fetched=pages_fetched,
@@ -249,7 +274,7 @@ async def collect_all(
     )
 
     logger.info(
-        "dzopti.anthropic_admin.collection_done",
+        "anthropic_admin.collection_done",
         extra={"cl_requests_made": requests_made, "cl_pages_fetched": pages_fetched, "cl_errors": len(errors)},
     )
 
@@ -261,10 +286,10 @@ async def collect_all(
         users=users,
         api_keys=api_keys_normalized,
         usage=usage_records,
+        costs=cost_records,
         rate_limits=rate_limits,
         spend_limits=spend_limits_result,
         models=models_normalized,
         metadata=metadata,
         errors=errors,
-        raw_usage=usage_raw,
     )

@@ -1,4 +1,4 @@
-anthropic_admin/config.py
+.env
 *.json
 __pycache__/
 *.pyc

@@ -8,7 +8,7 @@ from typing import Any, Optional
 from ..client import AnthropicAdminClient
 from ..pagination import last_id_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.users")
+logger = logging.getLogger("anthropic_admin.endpoints.users")
 
 ENDPOINT = "/v1/organizations/users"
 

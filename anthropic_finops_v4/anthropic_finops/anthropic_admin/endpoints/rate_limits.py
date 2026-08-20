@@ -14,7 +14,7 @@ from typing import Any, Optional
 from ..client import AnthropicAdminClient
 from ..pagination import next_page_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.rate_limits")
+logger = logging.getLogger("anthropic_admin.endpoints.rate_limits")
 
 ORG_ENDPOINT = "/v1/organizations/rate_limits"
 

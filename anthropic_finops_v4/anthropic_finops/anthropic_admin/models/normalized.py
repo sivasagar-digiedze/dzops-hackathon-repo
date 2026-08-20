@@ -1,5 +1,5 @@
 """
-Dzopti's normalized, provider-independent FinOps data model.
+Normalized, provider-independent FinOps data model.
 
 Design principle: fields that are meaningful across ANY LLM provider
 (Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex, ...) are promoted to
@@ -131,6 +131,56 @@ class UsageRecord:
 # project README for why — it will be re-added as its own phase later.
 
 # --------------------------------------------------------------------------
+# Cost
+#
+# Verified against Anthropic's official Cost API reference
+# (GET /v1/organizations/cost_report):
+#   - group_by[] supports ONLY "workspace_id" and "description" — there is
+#     NO api_key_id dimension anywhere in the Cost API. api_key_id is
+#     therefore ALWAYS None on a CostRecord, not because we failed to
+#     capture it, but because Anthropic's Cost API does not expose it at
+#     any granularity. This is documented, not invented.
+#   - bucket_width for cost_report accepts ONLY "1d" — there is no hourly
+#     cost granularity. Cost stays daily even though usage is hourly.
+#   - When grouped by "description", each row includes model,
+#     service_tier, context_window, cost_type, and token_type inline —
+#     that's how model/service_tier attribution becomes possible for cost
+#     despite there being no explicit group_by=model option.
+#   - "session_runtime_cost" is NOT a confirmed Anthropic cost_type in the
+#     public API reference. The field exists on CostRecord for schema
+#     symmetry with the requested output shape, but is always None/0
+#     unless a future Anthropic response actually returns that category —
+#     it is never fabricated.
+# --------------------------------------------------------------------------
+
+@dataclass
+class CostRecord:
+    provider: str
+    organization_id: Optional[str]
+    workspace_id: Optional[str]
+    api_key_id: Optional[str]  # ALWAYS None — Anthropic's Cost API has no api_key_id dimension (see note above)
+    model: Optional[str]
+    service_tier: Optional[str]
+
+    token_cost: Optional[str]           # sum of cost_type == "tokens" line items, decimal string, USD
+    web_search_cost: Optional[str]      # sum of cost_type == "web_search" line items
+    code_execution_cost: Optional[str]  # sum of cost_type == "code_execution" line items
+    session_runtime_cost: Optional[str] # always None unless Anthropic returns this cost_type (not currently documented)
+    total_cost: Optional[str]           # sum of every cost_type for this dimension combination
+
+    currency: Optional[str]
+
+    period_start: Optional[str]
+    period_end: Optional[str]
+
+    fetched_at: Optional[str]
+    provider_data: dict = field(default_factory=dict)  # context_window, token_type breakdown, per-cost_type raw amounts
+
+    def to_dict(self) -> dict:
+        return _to_dict(self)
+
+
+# --------------------------------------------------------------------------
 # Rate limits / spend limits / models
 # --------------------------------------------------------------------------
 
@@ -222,7 +272,7 @@ class CollectionMetadata:
 
 @dataclass
 class NormalizedResult:
-    """Top-level Dzopti normalized structure for one provider collection run."""
+    """Top-level normalized structure for one provider collection run."""
 
     provider: str
     organization: Optional[Organization]
@@ -231,12 +281,12 @@ class NormalizedResult:
     users: list  # list[User]
     api_keys: list  # list[ApiKeyMetadata]
     usage: list  # list[UsageRecord]
+    costs: list  # list[CostRecord]
     rate_limits: list  # list[RateLimitEntry]
     spend_limits: SpendLimitsResult
     models: list  # list[ModelInfo]
     metadata: CollectionMetadata
     errors: list  # list[CollectionError]
-    raw_usage: Optional[dict] = None  # {endpoint, request_parameters, pages: [...]} — for raw-vs-normalized verification only; never written to MongoDB
 
     def to_dict(self) -> dict:
         return {
@@ -247,7 +297,7 @@ class NormalizedResult:
             "users": [u.to_dict() for u in self.users],
             "api_keys": [k.to_dict() for k in self.api_keys],
             "usage": [u.to_dict() for u in self.usage],
-            "raw_usage": self.raw_usage,
+            "costs": [c.to_dict() for c in self.costs],
             "rate_limits": [r.to_dict() for r in self.rate_limits],
             "spend_limits": self.spend_limits.to_dict(),
             "models": [m.to_dict() for m in self.models],

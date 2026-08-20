@@ -7,7 +7,7 @@ from typing import Any
 
 from ..client import AnthropicAdminClient
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.organization")
+logger = logging.getLogger("anthropic_admin.endpoints.organization")
 
 ENDPOINT = "/v1/organizations/me"
 

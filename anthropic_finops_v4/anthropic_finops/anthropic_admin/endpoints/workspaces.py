@@ -14,7 +14,7 @@ from typing import Any, Optional
 from ..client import AnthropicAdminClient
 from ..pagination import last_id_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.workspaces")
+logger = logging.getLogger("anthropic_admin.endpoints.workspaces")
 
 WORKSPACES_ENDPOINT = "/v1/organizations/workspaces"
 

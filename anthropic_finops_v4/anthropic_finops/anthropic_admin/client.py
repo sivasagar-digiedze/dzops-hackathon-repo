@@ -31,7 +31,7 @@ from .exceptions import (
     AnthropicAPIError,
 )
 
-logger = logging.getLogger("dzopti.anthropic_admin.client")
+logger = logging.getLogger("anthropic_admin.client")
 
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _NEVER_RETRY_STATUS_CODES = {400, 401, 403, 404, 409, 422}
@@ -105,8 +105,8 @@ class AnthropicAdminClient:
             )
         return self._client
 
-    async def get(self, path: str, *, params: Optional[Mapping[str, Any]] = None) -> dict:
-        return await self._request_with_retries("GET", path, params=params)
+    async def get(self, path: str, *, params: Optional[Mapping[str, Any]] = None, headers: Optional[Mapping[str, str]] = None) -> dict:
+        return await self._request_with_retries("GET", path, params=params, headers=headers)
 
     async def _request_with_retries(
         self,
@@ -114,6 +114,7 @@ class AnthropicAdminClient:
         path: str,
         *,
         params: Optional[Mapping[str, Any]] = None,
+        headers: Optional[Mapping[str, str]] = None,
     ) -> dict:
         attempt = 0
         last_error: Optional[AnthropicAPIError] = None
@@ -122,7 +123,11 @@ class AnthropicAdminClient:
             attempt += 1
             started = time.monotonic()
             try:
-                response = await self._http.request(method, path, params=params)
+                # merge per-request headers with client default headers if provided
+                req_headers = None
+                if headers:
+                    req_headers = dict(headers)
+                response = await self._http.request(method, path, params=params, headers=req_headers)
             except httpx.TimeoutException as exc:
                 logger.warning(
                     "anthropic_admin.request_timeout",

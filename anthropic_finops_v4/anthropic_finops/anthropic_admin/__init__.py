@@ -1,5 +1,5 @@
 """
-Dzopti — Anthropic Claude Platform Admin API integration (Phase 1:
+Anthropic Claude Platform Admin API integration:
 fetch + normalize only; no database, no scheduler, no API layer).
 
 Public entry points:

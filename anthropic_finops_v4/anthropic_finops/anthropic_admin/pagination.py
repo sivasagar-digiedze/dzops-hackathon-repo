@@ -21,7 +21,7 @@ from typing import Any, Awaitable, Callable, List, Optional
 
 from .exceptions import PaginationError
 
-logger = logging.getLogger("dzopti.anthropic_admin.pagination")
+logger = logging.getLogger("anthropic_admin.pagination")
 
 DEFAULT_MAX_PAGES = 500
 

@@ -2,7 +2,7 @@
 Parser + normalizer for the organization resource.
 
 Parse step: extract the single raw object from the endpoint wrapper.
-Normalize step: map Anthropic's field names onto Dzopti's Organization
+Normalize step: map Anthropic's field names onto the application's Organization
     model, moving anything Anthropic-specific into provider_data.
 """
 from __future__ import annotations

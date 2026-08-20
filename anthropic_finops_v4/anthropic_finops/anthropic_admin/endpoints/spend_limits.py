@@ -17,7 +17,7 @@ from ..client import AnthropicAdminClient
 from ..exceptions import NotFoundError, PermissionDeniedError
 from ..pagination import next_page_cursor, paginate_all
 
-logger = logging.getLogger("dzopti.anthropic_admin.endpoints.spend_limits")
+logger = logging.getLogger("anthropic_admin.endpoints.spend_limits")
 
 ENDPOINT = "/v1/organizations/spend_limits/effective"
 
