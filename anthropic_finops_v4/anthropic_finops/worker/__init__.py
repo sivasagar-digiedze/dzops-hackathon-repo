@@ -1,0 +1,1 @@
+"""RabbitMQ worker for Anthropic collection jobs."""

@@ -10,6 +10,7 @@ themselves and never logged, printed, or persisted.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from dotenv import dotenv_values
 
@@ -27,8 +28,8 @@ ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ENV = dotenv_values(ENV_FILE)
 
 def get_env(name: str, default: str = "") -> str:
-    """Get a configuration value directly from .env."""
-    value = ENV.get(name)
+    """Get a process environment value, falling back to the project .env."""
+    value = os.environ.get(name, ENV.get(name))
     if value is None:
         return default
     return value
@@ -122,4 +123,68 @@ class MongoConfig:
             costs_collection=get_env("MONGODB_COSTS_COLLECTION", "anthropic_costs"),
             rate_limits_collection=get_env("MONGODB_RATE_LIMITS_COLLECTION", "anthropic_rate_limits"),
             spend_limits_collection=get_env("MONGODB_SPEND_LIMITS_COLLECTION", "anthropic_spend_limits"),
+        )
+
+
+@dataclass(frozen=True)
+class RabbitMQConfig:
+    """Connection and durable topology settings for collection jobs."""
+
+    url: str = field(repr=False)
+    queue: str = "anthropic_finops_collection"
+    dead_letter_exchange: str = "anthropic_finops_collection.dlx"
+    dead_letter_queue: str = "anthropic_finops_collection.dead"
+
+    def __post_init__(self) -> None:
+        if not self.url:
+            raise ConfigurationError(
+                "RABBITMQ_URL is not set. Add it to your .env file or export it."
+            )
+
+    def __repr__(self) -> str:
+        return f"RabbitMQConfig(url='***redacted***', queue={self.queue!r})"
+
+    @classmethod
+    def from_env(cls) -> "RabbitMQConfig":
+        return cls(
+            url=get_env("RABBITMQ_URL"),
+            queue=get_env("RABBITMQ_QUEUE", "anthropic_finops_collection"),
+            dead_letter_exchange=get_env(
+                "RABBITMQ_DEAD_LETTER_EXCHANGE", "anthropic_finops_collection.dlx"
+            ),
+            dead_letter_queue=get_env(
+                "RABBITMQ_DEAD_LETTER_QUEUE", "anthropic_finops_collection.dead"
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class SchedulerConfig:
+    interval_seconds: int = 3600
+    state_file: str = ".scheduler_state.json"
+    backfill_start: str = ""
+    backfill_end: str = ""
+
+    @classmethod
+    def from_env(cls) -> "SchedulerConfig":
+        return cls(
+            interval_seconds=int(get_env("COLLECTION_INTERVAL_SECONDS", "3600")),
+            state_file=get_env("SCHEDULER_STATE_FILE", ".scheduler_state.json"),
+            backfill_start=get_env("BACKFILL_START"),
+            backfill_end=get_env("BACKFILL_END"),
+        )
+
+
+@dataclass(frozen=True)
+class MongoRetryConfig:
+    max_retries: int = 5
+    base_seconds: float = 2.0
+    max_seconds: float = 60.0
+
+    @classmethod
+    def from_env(cls) -> "MongoRetryConfig":
+        return cls(
+            max_retries=int(get_env("MONGODB_MAX_RETRIES", "5")),
+            base_seconds=float(get_env("MONGODB_RETRY_BASE_SECONDS", "2")),
+            max_seconds=float(get_env("MONGODB_RETRY_MAX_SECONDS", "60")),
         )
